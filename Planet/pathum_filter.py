@@ -1,6 +1,7 @@
 import geopandas as gpd
 import numpy as np
 import os
+from shapely import geometry
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -18,6 +19,12 @@ adm1_pathum_df.loc[:, 'geometry'] = adm1_pathum_df['geometry'].apply(lambda x: x
 # get geojson format
 geo_json_geometry = adm1_pathum_df.__geo_interface__['features'][0]['geometry']
 
+# get bounding box of pathum thani in geopandas form
+bounds = adm1_pathum_df.geometry.exterior.bounds.to_numpy()[0]
+point_list = [(0, 1), (2, 1), (2, 3), (0, 3), (0, 1)]
+bbox = geometry.Polygon([[bounds[x], bounds[y]] for x, y in point_list])
+adm1_pathum_bbox_df = gpd.GeoDataFrame(index=[0], crs=adm1_pathum_df.crs, geometry=[bbox])    
+
 # geo_json_geometry = {
 #   "type": "Polygon",
 #   "coordinates": [
@@ -29,7 +36,7 @@ geo_json_geometry = adm1_pathum_df.__geo_interface__['features'][0]['geometry']
 #   ]
 # }
 
-def get_pathum_filter(date_start, date_end):
+def get_pathum_filter(date_start, date_end, aoi_geo=geo_json_geometry):
     """ Return the filter for Pathum Thani province 
         collected from date_start to date_end with
         cloud cover less than 10% """
@@ -37,7 +44,7 @@ def get_pathum_filter(date_start, date_end):
     geometry_filter = {
       "type": "GeometryFilter",
       "field_name": "geometry",
-      "config": geo_json_geometry
+      "config": aoi_geo
     }
 
     # filter images acquired in a certain date range
@@ -105,5 +112,5 @@ if __name__ == "__main__":
     display(adm1_pathum_df.to_json())
     
     # test get_stats
-    result = get_stats()
+    result = get_stats(get_pathum_filter('2019-10-01T09:04:34.167792Z','2019-09-30T00:00:00.000000Z'))
     print(result)
