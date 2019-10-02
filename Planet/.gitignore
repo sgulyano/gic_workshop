@@ -1,0 +1,7 @@
+*.zip
+*.tiff
+data
+tha_adm_rtsd_itos_20190221_SHP_PART_1
+tha_adm_rtsd_itos_20190221_SHP_PART_2
+__pycache__
+.ipynb_checkpoints
