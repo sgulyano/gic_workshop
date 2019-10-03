@@ -5,9 +5,25 @@ from datetime import datetime, timezone
 from retrying import retry
 
 EXCEED_QUOTA = 403 # used to be 429 from changelog May 2019
+EXCEED_RATE = 429
+MAX_ATTEMPT = 3
+WAIT_S = 10
 
 def get_datetime(yyyy, mm, dd):
     return datetime(yyyy, mm, dd, tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+
+def load_img_ids(img_id_file):
+    with open(img_id_file, 'r') as f:
+        search_id = f.readline()
+        img_ids = [i.rstrip() for i in f.readlines()]
+    return search_id, img_ids
+
+def save_img_ids(img_id_file, search_id, img_ids):
+    with open(img_id_file, 'w') as f:
+        f.write("%s\n" % search_id)
+        for item in img_ids:
+            f.write("%s\n" % item)
+
 
 def fetch_page_id(page):
     # get id of every item in the page of search results
@@ -55,53 +71,52 @@ def retry_if_asset_ok(exception):
 
 # "Wait 2^x * 10000 milliseconds between each retry"
 @retry(retry_on_exception=retry_if_asset_ok,
-       wait_exponential_multiplier=10000)
+       stop_max_attempt_number=MAX_ATTEMPT,
+       wait_exponential_multiplier=WAIT_S*1000)
 def download_item(session, item_id, item_dest, asset_type, item_type):
-    print(f"download: \t {item_id}")
-    
     # request an item
     item = session.get(("https://api.planet.com/data/v1/item-types/" +
                         "{}/items/{}/assets/").format(item_type, item_id))
     
     # raise an exception to trigger the retry
     if item.status_code != 200:
-        print(item)
-        raise IOException("Cannot get item activate link")
+        raise IOError(f"Cannot get item activate link - {item}")
     # check if item is ready (active)
     if item.json()[asset_type]['status'] != 'active':
         print(f"download: \t {item_id} is {item.json()[asset_type]['status']}")
-        raise Exception("Item is not active yet")
+        raise Exception(f"download: \t {item_id}   failed ... ")
     
     # download image to the given destination
     download_cmd = item.json()[asset_type]['location']
     urllib.request.urlretrieve(download_cmd, item_dest)
-    print(f"download: \t {item_id}   finished ... ")
+    print(f"download: \t {item_id}   completed ... ")
     return item.json()[asset_type]['status']
 
 
 # "Wait 2^x * 10000 milliseconds between each retry"
 @retry(retry_on_exception=retry_if_asset_ok,
-       wait_exponential_multiplier=10000)
+       stop_max_attempt_number=MAX_ATTEMPT,
+       wait_exponential_multiplier=WAIT_S*1000)
 def activate_item(session, item_id, asset_type, item_type):
     """ activate item """
-    print(f"activate: \t {item_id}")
-    
     # request an item
     item = session.get(("https://api.planet.com/data/v1/item-types/" +
                         "{}/items/{}/assets/").format(item_type, item_id))
     
     # raise an exception to trigger the retry
     if item.status_code != 200:
-        raise IOException(f"Cannot get item activate link - {item}")
+        raise IOError(f"Cannot get item activate link - {item}")
     
     # request activation
     response = session.post(item.json()[asset_type]["_links"]["activate"])
     
     if response.status_code == EXCEED_QUOTA:
-        print(f"activate: \t {item_id}   rate limit exceeded")
-        raise Exception("Rate limit error at running activate command")
-    elif response.status_code != 202 or response.status_code != 204:
-        raise Exception("Unknown error, try again")
+        raise IOError(f"activate: \t {item_id}   quota exceeded")
+    elif response.status_code == EXCEED_RATE:
+        print(f"activate: \t {item_id}   retrying")
+        raise Exception(f"activate: \t {item_id}   rate limit exceeded")
+    elif response.status_code != 202 and response.status_code != 204:
+        raise IOError(f"activate: \t {item_id}   unknown code {response.status_code}")
     
     print(f"activate: \t {item_id}   success ... with code {response.status_code}")
     return response.status_code
@@ -110,8 +125,17 @@ def activate_download_item(session, item_id, item_dest, asset_type="visual", ite
     if os.path.exists(item_dest):
         print(f"already have: \t {item_id}")
         return 'already have'
-    activate_item(session, item_id, asset_type, item_type)
-    download_item(session, item_id, item_dest, asset_type, item_type)
+    print(f"activate: \t {item_id}")
+    try:
+        activate_item(session, item_id, asset_type, item_type)
+    except Exception as e: 
+        print(e)
+        return
+    print(f"download: \t {item_id}")
+    try:
+        download_item(session, item_id, item_dest, asset_type, item_type)
+    except Exception as e: 
+        print(e)
 
     
 if __name__ == "__main__":
