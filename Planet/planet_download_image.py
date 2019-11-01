@@ -15,43 +15,13 @@ from multiprocessing.dummy import Pool as ThreadPool
 import urllib.request
 from retrying import retry
 
+from planet_utils import get_dest_df, read_img_id_file
+
 EXCEED_QUOTA = 403 # used to be 429 from changelog May 2019
 EXCEED_RATE = 429
 MAX_ATTEMPT = 3
 WAIT_S = 10
-
-#####################
-#### User Params ####
-#####################
-img_folder = './data'
-img_id_file = 'pathum_2019-01-01_2019-02-01.txt'
-
-#####################
-
-#%% get ids of images using saved search
-with open(img_id_file, 'r') as f:
-    search_id = f.readline().strip()
-    item_type = f.readline().strip()
-    asset_type = f.readline().strip()
-    img_ids = [i.rstrip() for i in f.readlines()]
-
-#%% get destination of all images
-df = pd.DataFrame({'id':img_ids, 
-                   'year' : [im_id[16:20] for im_id in img_ids], 
-                   'month': [im_id[21:23] for im_id in img_ids], 
-                   'date' : [im_id[16:26] for im_id in img_ids]})
-
-def get_dest(r):
-    return os.path.join(img_folder, 
-                        item_type, 
-                        asset_type, 
-                        r.year, 
-                        r.month, 
-                        r.date, 
-                        r.id + '.tiff')
-
-df['dest'] = df.apply(get_dest, axis=1)
-
+    
 
 def retry_if_asset_ok(exception):
     """Return True if we should retry (in this case when it's an IOError), False otherwise"""
@@ -129,10 +99,22 @@ def activate_download_item(session, item_id, item_dest, asset_type="visual", ite
 
         
 if __name__ == "__main__":
+    #####################
+    #### User Params ####
+    #####################
+    img_folder = './data'
+    img_id_file = 'pathum_2019-01-20_2019-01-21.txt'
+    #img_id_file = 'pathum_2019-01-01_2019-02-01.txt'
+
+    #####################
+    
+    search_id, item_type, asset_type, img_ids = read_img_id_file(img_id_file)
     print('Search ID  = %s' % search_id)
     print('Item Type  = %s' % item_type)
     print('Asset Type = %s' % asset_type)
 
+    # get destination of all images
+    df = get_dest_df(img_ids, img_folder, item_type, asset_type)
     print(df.head())
     
     #%% create dir for all files

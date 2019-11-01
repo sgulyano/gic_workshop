@@ -1,11 +1,38 @@
 import os
 import requests
+import pandas as pd
 import urllib.request
 from datetime import datetime, timezone
 from retrying import retry
 
 def get_datetime(yyyy, mm, dd):
     return datetime(yyyy, mm, dd, tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def read_img_id_file(img_id_file):
+    with open(img_id_file, 'r') as f:
+        search_id = f.readline().strip()
+        item_type = f.readline().strip()
+        asset_type = f.readline().strip()
+        img_ids = [i.rstrip() for i in f.readlines()]
+    return search_id, item_type, asset_type, img_ids
+
+def get_dest_df(img_ids, img_folder, item_type, asset_type):
+    df = pd.DataFrame({'id':img_ids, 
+                       'year' : [im_id[16:20] for im_id in img_ids], 
+                       'month': [im_id[21:23] for im_id in img_ids], 
+                       'date' : [im_id[16:26] for im_id in img_ids]})
+    def get_dest(r):
+        return os.path.join(img_folder, 
+                            item_type, 
+                            asset_type, 
+                            r.year, 
+                            r.month, 
+                            r.date, 
+                            r.id + '.tiff')
+
+    df['dest'] = df.apply(get_dest, axis=1)
+    return df
 
 
 def fetch_page_id(page):
