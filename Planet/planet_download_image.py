@@ -47,7 +47,16 @@ def download_item(session, item_id, item_dest, asset_type, item_type):
     
     # download image to the given destination
     download_cmd = item.json()[asset_type]['location']
-    urllib.request.urlretrieve(download_cmd, item_dest)
+    
+    try:
+        urllib.request.urlretrieve(download_cmd, item_dest)
+    except urllib.error.HTTPError:
+        print(f"download: \t {item_id}   failed ... HTTPError")
+        raise Exception(f"download: \t {item_id}   failed ... HTTPError")
+    except:
+        print(f"download: \t {item_id}   failed ... Error")
+        raise Exception(f"download: \t {item_id}   failed ... Error")
+    
     print(f"download: \t {item_id}   completed ... ")
     return item.json()[asset_type]['status']
 
@@ -90,31 +99,38 @@ def activate_download_item(session, item_id, item_dest, asset_type="visual", ite
         activate_item(session, item_id, asset_type, item_type)
     except Exception as e: 
         print(e)
+        if os.path.isfile(item_dest):
+            os.remove(item_dest)
+            print('file removed: \t {item_id}')
         return
     print(f"download: \t {item_id}")
     try:
         download_item(session, item_id, item_dest, asset_type, item_type)
     except Exception as e: 
         print(e)
+        if os.path.isfile(item_dest):
+            os.remove(item_dest)
+            print('file removed: \t {item_id}')
+        return
 
         
 if __name__ == "__main__":
-    #####################
-    #### User Params ####
-    #####################
-    img_folder = './data'
-    img_id_file = 'pathum_2019-01-20_2019-01-21.txt'
-    #img_id_file = 'pathum_2019-01-01_2019-02-01.txt'
-
-    #####################
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("img_id_file", help="Planet satellite image ID file")
+    parser.add_argument("-o", "--output", default='./data', help="Output folder for storing satellite images")
+    args = parser.parse_args()
     
-    search_id, item_type, asset_type, img_ids = read_img_id_file(img_id_file)
+    assert(os.path.isfile(args.img_id_file))
+    assert(os.path.isdir(args.output))
+    
+    search_id, item_type, asset_type, img_ids = read_img_id_file(args.img_id_file)
     print('Search ID  = %s' % search_id)
     print('Item Type  = %s' % item_type)
     print('Asset Type = %s' % asset_type)
 
     # get destination of all images
-    df = get_dest_df(img_ids, img_folder, item_type, asset_type)
+    df = get_dest_df(img_ids, args.output, item_type, asset_type)
     print(df.head())
     
     #%% create dir for all files
@@ -125,7 +141,7 @@ if __name__ == "__main__":
 
     #%% activate and download all images
     # setup auth
-    print('Start download satellite images to   %s ...' % img_folder)
+    print('Start download satellite images to   %s ...' % args.output)
     session = requests.Session()
     session.auth = (os.environ['PL_API_KEY'], '')
 
